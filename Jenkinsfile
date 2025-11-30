@@ -2,10 +2,10 @@ pipeline {
     agent any
     
     environment {
-        PROD_SERVER = '192.168.17.153'
-        PROD_USER = 'sinda'
-        SONARQUBE_URL = 'http://localhost:9000'
-        ZAP_URL = 'http://192.168.17.153:8090'
+        PROD_SERVER = '192.168.17.153'       // IP السيرفر الإنتاجي
+        PROD_USER = 'sinda'                  // اسم المستخدم SSH
+        SONARQUBE_URL = 'http://192.168.17.144:9000'  // IP سيرفر SonarQube
+        ZAP_URL = 'http://192.168.17.153:8090'        // IP ZAP
     }
     
     tools {
@@ -24,7 +24,9 @@ pipeline {
         stage('Build') {
             steps {
                 echo '===== Compilation ====='
-                sh 'mvn clean compile'
+                withEnv(["JAVA_HOME=${tool name: 'JDK11', type: 'jdk'}", "PATH=${tool name: 'JDK11', type: 'jdk'}/bin:${env.PATH}"]) {
+                    sh 'mvn clean compile'
+                }
             }
         }
         
