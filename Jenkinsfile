@@ -2,37 +2,44 @@ pipeline {
     agent any
     
     environment {
-        PROD_SERVER = '192.168.17.153'       // IP السيرفر الإنتاجي
-        PROD_USER = 'sinda'                  // اسم المستخدم SSH
-        SONARQUBE_URL = 'http://192.168.17.144:9000'  // IP سيرفر SonarQube
-        ZAP_URL = 'http://192.168.17.153:8090'        // IP ZAP
+        PROD_SERVER = '192.168.17.153'                  // اسم VM الإنتاجي
+        PROD_USER = 'sinda'                       // مستخدم SSH على VM
+        SONARQUBE_URL = 'http://192.168.17.144:9000'  // رابط SonarQube من Jenkins container
+        ZAP_URL = 'http://192.168.17.144:8090'        // رابط ZAP
     }
     
     tools {
-        maven 'Maven'
-        jdk 'JDK11'
+        maven 'Maven'   // الاسم اللي ضبطته في Jenkins → Global Tool Configuration
+        jdk 'JDK11'     // الاسم اللي ضبطته في Jenkins → Global Tool Configuration
     }
     
     stages {
+        stage('Check Java & Maven') {
+            steps {
+                echo '===== Check Environment ====='
+                sh 'echo JAVA_HOME=$JAVA_HOME'
+                sh 'java -version'
+                sh 'mvn -v'
+            }
+        }
+
         stage('Checkout') {
             steps {
-                echo '===== Récupération du code ====='
+                echo '===== Checkout Code ====='
                 checkout scm
             }
         }
         
         stage('Build') {
             steps {
-                echo '===== Compilation ====='
-                withEnv(["JAVA_HOME=${tool name: 'JDK11', type: 'jdk'}", "PATH=${tool name: 'JDK11', type: 'jdk'}/bin:${env.PATH}"]) {
-                    sh 'mvn clean compile'
-                }
+                echo '===== Compile ====='
+                sh 'mvn clean compile'
             }
         }
         
         stage('Test') {
             steps {
-                echo '===== Tests unitaires ====='
+                echo '===== Run Unit Tests ====='
                 sh 'mvn test'
             }
             post {
@@ -44,7 +51,7 @@ pipeline {
         
         stage('SAST - SonarQube') {
             steps {
-                echo '===== Analyse SonarQube ====='
+                echo '===== SonarQube Analysis ====='
                 withSonarQubeEnv('SonarQube') {
                     sh 'mvn sonar:sonar -Dsonar.projectKey=snake-game -Dsonar.host.url=${SONARQUBE_URL}'
                 }
@@ -62,7 +69,7 @@ pipeline {
         
         stage('Package') {
             steps {
-                echo '===== Création du WAR ====='
+                echo '===== Create WAR ====='
                 sh 'mvn package -DskipTests'
                 archiveArtifacts artifacts: 'target/*.war', fingerprint: true
             }
@@ -78,7 +85,7 @@ pipeline {
         
         stage('Deploy to VM_Prod') {
             steps {
-                echo '===== Déploiement sur VM_Prod ====='
+                echo '===== Deploy to VM_Prod ====='
                 sh '''
                     docker save snake-game:${BUILD_NUMBER} | gzip > snake-${BUILD_NUMBER}.tar.gz
                     scp -o StrictHostKeyChecking=no snake-${BUILD_NUMBER}.tar.gz ${PROD_USER}@${PROD_SERVER}:/tmp/
@@ -98,18 +105,18 @@ pipeline {
         
         stage('Verify Deployment') {
             steps {
-                echo '===== Vérification du déploiement ====='
+                echo '===== Verify Deployment ====='
                 sh '''
                     sleep 10
                     curl -f http://${PROD_SERVER}:8081/snake-game/game || exit 1
-                    echo "✅ Application déployée avec succès !"
+                    echo "✅ Application deployed successfully!"
                 '''
             }
         }
         
         stage('DAST - ZAP Scan') {
             steps {
-                echo '===== Scan de sécurité OWASP ZAP ====='
+                echo '===== OWASP ZAP Scan ====='
                 sh '''
                     curl "${ZAP_URL}/JSON/spider/action/scan/?url=http://${PROD_SERVER}:8081/snake-game/game" || true
                     sleep 20
@@ -128,11 +135,11 @@ pipeline {
     
     post {
         success {
-            echo '===== ✅ Pipeline terminé avec succès ! ====='
-            echo "🎮 Application : http://${PROD_SERVER}:8081/snake-game/game"
+            echo '===== ✅ Pipeline Finished Successfully! ====='
+            echo "🎮 Application URL: http://${PROD_SERVER}:8081/snake-game/game"
         }
         failure {
-            echo '===== ❌ Pipeline échoué ====='
+            echo '===== ❌ Pipeline Failed ====='
         }
     }
 }
